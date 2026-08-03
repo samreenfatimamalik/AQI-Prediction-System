@@ -1,0 +1,29 @@
+name: Hourly AQI Feature Pipeline
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # runs at minute 0 of every hour
+  workflow_dispatch:        # lets you also trigger it manually from GitHub's UI, for testing
+
+jobs:
+  fetch-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas hopsworks python-dotenv pyarrow confluent-kafka
+
+      - name: Run hourly fetch and push script
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python src/push_to_hopsworks.py

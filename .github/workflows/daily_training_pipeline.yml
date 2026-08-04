@@ -1,0 +1,41 @@
+name: Daily AQI Model Training
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # runs once a day at 2:00 AM UTC (7:00 AM Pakistan time)
+  workflow_dispatch:        # lets you trigger it manually to test
+
+jobs:
+  train-models:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas scikit-learn hopsworks python-dotenv pyarrow confluent-kafka joblib
+
+      - name: Train 1-day model
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python src/train_model_1d.py
+
+      - name: Train 2-day model
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python src/train_model_2d.py
+
+      - name: Train 3-day model
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python src/train_model_3d.py

@@ -80,9 +80,18 @@ def fetch_city_latest(city_name, lat, lon, past_days=PAST_DAYS):
         "pressure": weather_data["hourly"]["surface_pressure"]
     })
 
-    # 4. Merge on time
+
+   # 4. Merge on time
     df = pd.merge(df_aqi, df_weather, on="time")
     df["time"] = pd.to_datetime(df["time"])
+
+    # 5. Drop any future/forecasted hours — Open-Meteo's forecast API
+    #    returns upcoming days by default, which are PREDICTIONS, not
+    #    real observed pollution. We only want data that has actually happened.
+    today = pd.Timestamp.now().normalize()
+    df = df[df["time"] < today + pd.Timedelta(days=1)]
+    # 6. Hourly -> daily average
+    df["date"] = df["time"].dt.date
 
     # 5. Hourly -> daily average
     df["date"] = df["time"].dt.date

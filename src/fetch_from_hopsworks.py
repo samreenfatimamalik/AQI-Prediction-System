@@ -3,7 +3,7 @@ import pandas as pd
 
 print("SCRIPT STARTED")
 
-# 1. Log in to your Hopsworks project (same as Day 6)
+# 1. Log in to your Hopsworks project 
 print("Logging in to Hopsworks...")
 project = hopsworks.login()
 print("Login successful!")
@@ -44,8 +44,8 @@ print("\nSaved sorted checkpoint to data/raw_from_hopsworks_sorted.csv")
 # 6. Calendar features - simple, free signals
 #    day_of_week: 0=Monday ... 6=Sunday
 #    month: 1-12 (helps capture seasonal patterns like winter smog)
-df["day_of_week"] = df["date"].dt.dayofweek
-df["month"] = df["date"].dt.month
+df["day_of_week"] = df["date"].dt.dayofweek.astype("int64")
+df["month"] = df["date"].dt.month.astype("int64")
 
 # 7. Lag features - "what was PM2.5 N days ago, for THIS city"
 #    groupby("city") ensures Lahore only looks at Lahore's own past,
@@ -112,3 +112,22 @@ print(f"Dropped {before - after} rows (expected: start+end gaps per city)")
 
 df_clean.to_csv("data/engineered_features.csv", index=False)
 print("\nSaved final engineered dataset to data/engineered_features.csv")
+
+
+# STEP 5: Push engineered features to Hopsworks Feature Store
+
+
+print("\nPushing engineered features to Hopsworks...")
+
+engineered_fg = fs.get_or_create_feature_group(
+    name="aqi_engineered_features",
+    version=1,
+    primary_key=["city", "date"],
+    event_time="date",
+    time_travel_format="HUDI",
+    description="Engineered AQI features (lags, rolling averages, targets) for 5 Pakistani cities",
+)
+
+engineered_fg.insert(df_clean, write_options={"wait_for_job": True})
+
+print("Successfully pushed", len(df_clean), "rows to aqi_engineered_features in Hopsworks.")

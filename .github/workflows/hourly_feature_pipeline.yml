@@ -20,10 +20,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pandas hopsworks python-dotenv pyarrow confluent-kafka
+          pip install requests pandas hopsworks python-dotenv pyarrow confluent-kafka scikit-learn
 
-      - name: Run hourly fetch and push script
+      - name: Run hourly fetch and push script (raw features)
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
           python src/push_to_hopsworks.py
+
+      - name: Run feature engineering script (engineered features)
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python src/fetch_from_hopsworks.py

@@ -13,24 +13,52 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(page_title="Pearls AQI Predictor", page_icon="🌫️", layout="wide")
-st.markdown("""
+
+st.markdown("""<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-.block-container { padding-top: 2rem; }
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+.block-container { padding-top: 2rem; padding-bottom: 3rem; }
+
+.metric-card {
+    background-color: #1e2530; border-radius: 14px; padding: 22px;
+    text-align: center; border: 1px solid #2d3748;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+}
+.metric-card h1 { margin: 6px 0; font-size: 42px; font-weight: 800; }
+.metric-card p { margin: 0; color: #9ca3af; font-size: 14px; font-weight: 500; }
+
+.hero-card {
+    border-radius: 18px; padding: 24px 30px; margin-bottom: 26px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+.hero-label {
+    color: #9ca3af; font-size: 13px; margin: 0 0 6px 0;
+    letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;
+}
+.hero-value { margin: 0; font-size: 54px; font-weight: 800; line-height: 1.1; }
+.hero-status { font-weight: 700; font-size: 16px; margin: 8px 0 0 0; }
+.hero-side { text-align: right; }
+.hero-side p { margin: 3px 0; color: #cbd5e1; font-size: 13px; line-height: 1.5; }
+
+.section-header {
+    font-size: 20px; font-weight: 700; color: #e5e7eb;
+    margin: 6px 0 14px 0;
+}
+.app-footer {
+    text-align: center; color: #6b7280; font-size: 12px;
+    margin-top: 40px; padding-top: 18px; border-top: 1px solid #2d3748;
+}
 </style>
 """, unsafe_allow_html=True)
 
 CITIES = ["Lahore", "Karachi", "Islamabad", "Faisalabad", "Peshawar"]
-
-st.markdown("""
-<style>
-.metric-card {
-    background-color: #1e2530; border-radius: 12px; padding: 20px;
-    text-align: center; border: 1px solid #2d3748;
-}
-.metric-card h1 { margin: 5px 0; font-size: 42px; }
-.metric-card p { margin: 0; color: #9ca3af; font-size: 14px; }
-</style>
-""", unsafe_allow_html=True)
 
 
 def get_aqi_category(value):
@@ -77,8 +105,6 @@ def load_all_features():
         df = fg.select_all().read(read_options={"use_hive": True})
     df["date"] = pd.to_datetime(df["date"])
 
-    # Defensive guard: never trust future-dated rows, even if some slip
-    # into the feature store (e.g. from an API returning forecast data).
     today = pd.Timestamp.now(tz="UTC").normalize()
     df = df[df["date"] <= today]
 
@@ -87,7 +113,6 @@ def load_all_features():
 
 
 def build_engineered_features(df):
-    """Works on single-row or multi-row DataFrames alike."""
     df = df.copy()
     df["aqi_change_rate"] = (df["pm25_lag_1"] - df["pm25_lag_3"]) / 3
     df["volatility_7"] = (df["pm25_lag_1"] - df["pm25_rolling_7"]).abs()
@@ -147,7 +172,7 @@ with st.sidebar:
     st.title("🌫️ Pearls AQI")
     st.caption("Serverless 3-day AQI forecaster")
     city = st.selectbox("Select a city", CITIES)
-    if st.button("🔄 Refresh data"):
+    if st.button("🔄 Refresh data", width='stretch'):
         st.cache_data.clear()
         st.rerun()
 
@@ -166,15 +191,38 @@ try:
 
     with st.sidebar:
         st.divider()
-        st.caption(f"Data as of {last_date.strftime('%Y-%m-%d')}")
-        st.metric("Temperature", f"{latest_row['temperature'].iloc[0]:.1f}°C")
-        st.metric("Humidity", f"{latest_row['humidity'].iloc[0]:.0f}%")
-        st.metric("Wind Speed", f"{latest_row['wind_speed'].iloc[0]:.1f} km/h")
-        st.metric("Pressure", f"{latest_row['pressure'].iloc[0]:.0f} hPa")
+        st.caption(f"📅 Data as of {last_date.strftime('%Y-%m-%d')}")
+        st.metric("🌡️ Temperature", f"{latest_row['temperature'].iloc[0]:.1f}°C")
+        st.metric("💧 Humidity", f"{latest_row['humidity'].iloc[0]:.0f}%")
+        st.metric("🌬️ Wind Speed", f"{latest_row['wind_speed'].iloc[0]:.1f} km/h")
+        st.metric("🧭 Pressure", f"{latest_row['pressure'].iloc[0]:.0f} hPa")
 
     # ---------------- HEADER ----------------
     st.title("Pearls AQI Predictor")
     st.caption(f"3-day AQI forecast for {city}, Pakistan")
+
+    # ---------------- TODAY'S AQI (actual, observed) ----------------
+    hist = city_df.sort_values("date")
+    today_val = hist["pm2_5"].iloc[-1]
+    today_cat, today_color = get_aqi_category(today_val)
+
+    st.markdown(f"""
+    <div class="hero-card" style="background: linear-gradient(135deg, {today_color}26, #1e2530); border: 1px solid {today_color}66;">
+        <div>
+            <p class="hero-label">Today · {last_date.strftime('%A, %b %d')}</p>
+            <h1 class="hero-value" style="color:{today_color}">{today_val:.0f}</h1>
+            <p class="hero-status" style="color:{today_color}">{today_cat}</p>
+        </div>
+        <div class="hero-side">
+            <p style="font-size:15px; font-weight:600; color:#e5e7eb;">📍 {city}, Pakistan</p>
+            <p>🌡️ {latest_row['temperature'].iloc[0]:.1f}°C &nbsp;·&nbsp; 💧 {latest_row['humidity'].iloc[0]:.0f}% humidity</p>
+            <p>🌬️ {latest_row['wind_speed'].iloc[0]:.1f} km/h wind</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---------------- 3-DAY FORECAST ----------------
+    st.markdown('<p class="section-header">📅 3-Day Forecast</p>', unsafe_allow_html=True)
 
     cols = st.columns(3)
     label_dates = {
@@ -182,7 +230,7 @@ try:
         "2d": last_date + pd.Timedelta(days=2),
         "3d": last_date + pd.Timedelta(days=3),
     }
-    labels = {h: d.strftime("%a, %b %d") for h, d in label_dates.items()}  # e.g. "Tue, Aug 11"
+    labels = {h: d.strftime("%a, %b %d") for h, d in label_dates.items()}
     hazard = False
     for i, h in enumerate(["1d", "2d", "3d"]):
         val = predictions[h]
@@ -202,14 +250,13 @@ try:
     if hazard:
         st.error(f"⚠️ Hazardous AQI levels predicted for {city}. Sensitive groups should limit outdoor exposure.")
     else:
-        st.success(f"No hazardous AQI levels predicted for {city} in the next 3 days.")
+        st.success(f"✅ No hazardous AQI levels predicted for {city} in the next 3 days.")
 
     st.write("")
     tab1, tab2, tab3 = st.tabs(["📈 Trend History", "🏙️ Compare Cities", "🔍 Why this prediction?"])
 
     # ---------------- TAB 1: TREND ----------------
     with tab1:
-        hist = city_df.sort_values("date")
         forecast_dates = [last_date + pd.Timedelta(days=d) for d in [1, 2, 3]]
         forecast_vals = [predictions["1d"], predictions["2d"], predictions["3d"]]
 
@@ -227,12 +274,12 @@ try:
             xaxis_title="Date", yaxis_title="PM2.5 / AQI",
             legend=dict(orientation="h", y=1.1),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     # ---------------- TAB 2: COMPARE CITIES ----------------
     with tab2:
         comp_df = predict_all_cities(all_data, models)
-        st.dataframe(comp_df, use_container_width=True, hide_index=True)
+        st.dataframe(comp_df, width='stretch', hide_index=True)
 
         fig2 = px.bar(
             comp_df.melt(id_vars=["City", "Status"], value_vars=["Tomorrow", "In 2 days", "In 3 days"],
@@ -240,7 +287,7 @@ try:
             x="City", y="AQI", color="Horizon", barmode="group",
             template="plotly_dark", height=420,
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
 
     # ---------------- TAB 3: SHAP ----------------
     with tab3:
@@ -273,8 +320,14 @@ try:
             xaxis_title="Impact on predicted AQI",
             title=f"Top feature contributions — {labels[horizon_choice]} forecast for {city}",
         )
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width='stretch')
         st.caption("🔴 Red bars push the prediction higher (worse air quality). 🟢 Green bars push it lower.")
+
+    st.markdown("""
+    <div class="app-footer">
+        Built with Hopsworks · Open-Meteo · Scikit-learn · SHAP · Streamlit &nbsp;|&nbsp; Pearls AQI Predictor
+    </div>
+    """, unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"Something went wrong: {e}")

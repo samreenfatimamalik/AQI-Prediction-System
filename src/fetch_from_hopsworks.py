@@ -12,7 +12,17 @@ fs = project.get_feature_store()
 
 aqi_fg = fs.get_feature_group(name="aqi_daily_features", version=1)
 
-df = aqi_fg.read()
+aqi_fg = fs.get_feature_group(name="aqi_daily_features", version=1)
+
+# OLD (Flight-dependent, timing out):
+# df = aqi_fg.read()
+
+# NEW (bypasses Flight, uses reliable Hive path):
+try:
+    df = aqi_fg.read()
+except Exception as e:
+    print(f"Flight read failed ({e}), falling back to Hive...")
+    df = aqi_fg.select_all().read(read_options={"use_hive": True})
 
 print("Shape of data pulled from Hopsworks:", df.shape)
 print(df.head())

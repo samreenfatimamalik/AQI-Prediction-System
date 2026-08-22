@@ -1,5 +1,6 @@
 import hopsworks
 import pandas as pd
+import os
 
 print("SCRIPT STARTED")
 
@@ -43,6 +44,7 @@ print(df[df["city"] == "Lahore"].head(10)[["date", "city", "pm2_5"]])
 # Save this cleaned, sorted version locally too, just so we have
 # a checkpoint to look at (not the final storage - Hopsworks stays
 # the source of truth, this is just for our own sanity-checking)
+os.makedirs("data", exist_ok=True)
 df.to_csv("data/raw_from_hopsworks_sorted.csv", index=False)
 print("\nSaved sorted checkpoint to data/raw_from_hopsworks_sorted.csv")
 

@@ -7,12 +7,36 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import joblib
 import os
+import time
+import sys
+
+
+def split_with_retry(fv, max_retries=3, wait_seconds=30, **kwargs):
+    for attempt in range(1, max_retries + 1):
+        try:
+            return fv.train_test_split(**kwargs)
+        except Exception as e:
+            print(f"[Attempt {attempt}/{max_retries}] train_test_split failed: {e}")
+            if attempt < max_retries:
+                print(f"Waiting {wait_seconds}s before retry...")
+                time.sleep(wait_seconds)
+
+    print("All retries failed. Trying Hive fallback...")
+    try:
+        return fv.train_test_split(read_options={"use_hive": True}, **kwargs)
+    except Exception as e:
+        print(f"Hive fallback also failed: {e}")
+        print("Hopsworks Feature Query Service appears to be down right now. "
+              "Skipping this training run — next scheduled run will try again.")
+        sys.exit(1)
+
 
 project = hopsworks.login()
 fs = project.get_feature_store()
 fv = fs.get_feature_view(name="aqi_fv_2d", version=1)
 
-X_train, X_test, y_train, y_test = fv.train_test_split(
+X_train, X_test, y_train, y_test = split_with_retry(
+    fv,
     train_start="2024-01-01",
     train_end="2026-05-31",
     test_start="2026-06-01",

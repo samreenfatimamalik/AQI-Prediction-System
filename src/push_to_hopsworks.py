@@ -4,6 +4,22 @@ import time
 import os
 import hopsworks
 from dotenv import load_dotenv
+import time
+
+def insert_with_retry(fg, df, max_retries=3, wait_seconds=20, **kwargs):
+    for attempt in range(1, max_retries + 1):
+        try:
+            fg.insert(df, **kwargs)
+            return
+        except Exception as e:
+            print(f"[Insert attempt {attempt}/{max_retries}] failed: {e}")
+            if attempt < max_retries:
+                print(f"Waiting {wait_seconds}s before retry...")
+                time.sleep(wait_seconds)
+            else:
+                print("All insert retries failed. Hopsworks appears unresponsive right now. "
+                      "Skipping this run — next scheduled run will try again.")
+                raise
 
 load_dotenv()
 
@@ -145,7 +161,7 @@ def push_to_hopsworks(df):
         time_travel_format="HUDI"
     )
 
-    aqi_fg.insert(df)
+    insert_with_retry(aqi_fg, df)
     print("Latest data successfully upserted into Hopsworks!")
 
 

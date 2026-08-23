@@ -136,7 +136,15 @@ engineered_fg = fs.get_or_create_feature_group(
     event_time="date",
     time_travel_format="HUDI",
     description="Engineered AQI features (lags, rolling averages, targets) for 5 Pakistani cities",
+    statistics_config={"enabled": False},  # avoid Hopsworks stats-compute job flakiness
 )
+
+# Also disable on existing FG in case it was already created earlier with stats ON
+try:
+    engineered_fg.statistics_config = {"enabled": False}
+    engineered_fg.update_statistics_config()
+except Exception as e:
+    print(f"Could not update statistics config (non-fatal): {e}")
 
 engineered_fg.insert(df_clean, write_options={"wait_for_job": True})
 

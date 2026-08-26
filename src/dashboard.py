@@ -14,66 +14,61 @@ load_dotenv()
 
 st.set_page_config(page_title="Pearls AQI Predictor", page_icon="🌫️", layout="wide")
 
-st.markdown("""<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.block-container { padding-top: 2rem; padding-bottom: 3rem; }
+# ==================== DESIGN TOKENS ====================
+# "Instrument panel" aesthetic — the dashboard reads like a sensor
+# station readout rather than a generic SaaS dark theme.
+VOID = "#0d0f11"          # app background — soot black
+PANEL = "#17191c"         # card background
+PANEL_RAISED = "#1c1f23"  # slightly raised surface
+HAIRLINE = "#2a2d31"      # thin borders, instrument-panel style
+TEXT_PRIMARY = "#e8e6e1"  # warm off-white, like dust/paper
+TEXT_MUTED = "#8b8d90"
+TEXT_FAINT = "#5a5d61"
+ACCENT_HAZE = "#c9a15a"   # dusty gold — sun filtered through smog
 
-.metric-card {
-    background-color: #1e2530; border-radius: 14px; padding: 22px;
-    text-align: center; border: 1px solid #2d3748;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.metric-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.35);
-}
-.metric-card h1 { margin: 6px 0; font-size: 42px; font-weight: 800; }
-.metric-card p { margin: 0; color: #9ca3af; font-size: 14px; font-weight: 500; }
 
-.hero-card {
-    border-radius: 18px; padding: 24px 30px; margin-bottom: 26px;
-    display: flex; justify-content: space-between; align-items: center;
-    flex-wrap: wrap; gap: 16px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-}
-.hero-label {
-    color: #9ca3af; font-size: 13px; margin: 0 0 6px 0;
-    letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;
-}
-.hero-value { margin: 0; font-size: 54px; font-weight: 800; line-height: 1.1; }
-.hero-status { font-weight: 700; font-size: 16px; margin: 8px 0 0 0; }
-.hero-side { text-align: right; }
-.hero-side p { margin: 3px 0; color: #cbd5e1; font-size: 13px; line-height: 1.5; }
 
-.section-header {
-    font-size: 20px; font-weight: 700; color: #e5e7eb;
-    margin: 6px 0 14px 0;
-}
-.app-footer {
-    text-align: center; color: #6b7280; font-size: 12px;
-    margin-top: 40px; padding-top: 18px; border-top: 1px solid #2d3748;
-}
-</style>
-""", unsafe_allow_html=True)
 
 CITIES = ["Lahore", "Karachi", "Islamabad", "Faisalabad", "Peshawar"]
 
 
 def get_aqi_category(value):
     if value <= 50:
-        return "Good", "#2ecc71"
+        return "Good", "#7fb069"
     elif value <= 100:
-        return "Moderate", "#f1c40f"
+        return "Moderate", "#d4a54c"
     elif value <= 150:
-        return "Unhealthy for Sensitive Groups", "#e67e22"
+        return "Unhealthy for Sensitive Groups", "#c97a3d"
     elif value <= 200:
-        return "Unhealthy", "#e74c3c"
+        return "Unhealthy", "#b8503f"
     elif value <= 300:
-        return "Very Unhealthy", "#8e44ad"
+        return "Very Unhealthy", "#8b5a8f"
     else:
-        return "Hazardous", "#7d3c3c"
+        return "Hazardous", "#6b3838"
+
+
+def grain_params(value):
+    """Ties visual particulate 'grain' density to the AQI reading itself —
+    worse air quality renders as denser, darker grain in the strip."""
+    v = max(0, min(value, 300))
+    opacity = 0.12 + (v / 300) * 0.55
+    size = 10 - (v / 300) * 6
+    return round(opacity, 2), round(size, 1)
+
+
+def themed_chart(fig, height=420):
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=PANEL,
+        plot_bgcolor=PANEL,
+        font=dict(family="IBM Plex Mono, monospace", color=TEXT_MUTED, size=12),
+        height=height,
+        margin=dict(l=10, r=10, t=40, b=10),
+        legend=dict(orientation="h", y=1.12, font=dict(color=TEXT_MUTED)),
+    )
+    fig.update_xaxes(gridcolor=HAIRLINE, zerolinecolor=HAIRLINE)
+    fig.update_yaxes(gridcolor=HAIRLINE, zerolinecolor=HAIRLINE)
+    return fig
 
 
 @st.cache_resource(show_spinner="Connecting to Hopsworks...")
@@ -99,10 +94,12 @@ def load_all_features():
     project = get_project()
     fs = project.get_feature_store()
     fg = fs.get_feature_group("aqi_engineered_features", version=1)
+
     try:
         df = fg.read()
     except Exception:
         df = fg.select_all().read(read_options={"use_hive": True})
+
     df["date"] = pd.to_datetime(df["date"])
 
     today = pd.Timestamp.now(tz="UTC").normalize()
@@ -169,10 +166,14 @@ def get_shap_explainer(horizon_key, _model, _background_df):
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
-    st.title("🌫️ Pearls AQI")
-    st.caption("Serverless 3-day AQI forecaster")
+    st.markdown(f"""
+    <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600;
+    color:{TEXT_PRIMARY}; margin-bottom:0;">🌫️ PEARLS AQI</p>
+    <p style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:1px;
+    color:{TEXT_FAINT}; text-transform:uppercase; margin-top:2px;">Station Console</p>
+    """, unsafe_allow_html=True)
     city = st.selectbox("Select a city", CITIES)
-    if st.button("🔄 Refresh data", width='stretch'):
+    if st.button("↻ Refresh feed", width='stretch'):
         st.cache_data.clear()
         st.rerun()
 
@@ -191,38 +192,45 @@ try:
 
     with st.sidebar:
         st.divider()
-        st.caption(f"📅 Data as of {last_date.strftime('%Y-%m-%d')}")
-        st.metric("🌡️ Temperature", f"{latest_row['temperature'].iloc[0]:.1f}°C")
-        st.metric("💧 Humidity", f"{latest_row['humidity'].iloc[0]:.0f}%")
-        st.metric("🌬️ Wind Speed", f"{latest_row['wind_speed'].iloc[0]:.1f} km/h")
-        st.metric("🧭 Pressure", f"{latest_row['pressure'].iloc[0]:.0f} hPa")
+        st.caption(f"DATA AS OF {last_date.strftime('%Y-%m-%d')}")
+        st.metric("Temperature", f"{latest_row['temperature'].iloc[0]:.1f}°C")
+        st.metric("Humidity", f"{latest_row['humidity'].iloc[0]:.0f}%")
+        st.metric("Wind Speed", f"{latest_row['wind_speed'].iloc[0]:.1f} km/h")
+        st.metric("Pressure", f"{latest_row['pressure'].iloc[0]:.0f} hPa")
 
     # ---------------- HEADER ----------------
-    st.title("Pearls AQI Predictor")
-    st.caption(f"3-day AQI forecast for {city}, Pakistan")
+    st.markdown(f"""
+    <p style="font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:2px;
+    text-transform:uppercase; color:{TEXT_FAINT}; margin-bottom:2px;">Pearls AQI Predictor</p>
+    """, unsafe_allow_html=True)
+    st.title(f"{city}, Pakistan")
+    st.caption("3-day particulate forecast · serverless ML pipeline")
 
-    # ---------------- TODAY'S AQI (actual, observed) ----------------
+    # ---------------- SENSOR READOUT (today's AQI) ----------------
     hist = city_df.sort_values("date")
     today_val = hist["pm2_5"].iloc[-1]
     today_cat, today_color = get_aqi_category(today_val)
+    g_opacity, g_size = grain_params(today_val)
 
     st.markdown(f"""
-    <div class="hero-card" style="background: linear-gradient(135deg, {today_color}26, #1e2530); border: 1px solid {today_color}66;">
+    <div class="readout">
         <div>
-            <p class="hero-label">Today · {last_date.strftime('%A, %b %d')}</p>
-            <h1 class="hero-value" style="color:{today_color}">{today_val:.0f}</h1>
-            <p class="hero-status" style="color:{today_color}">{today_cat}</p>
+            <p class="readout-eyebrow">Reading · {last_date.strftime('%A, %b %d')}</p>
+            <h1 class="readout-value" style="color:{today_color}">{today_val:.0f}</h1>
+            <p class="readout-status" style="color:{today_color}">{today_cat}</p>
         </div>
-        <div class="hero-side">
-            <p style="font-size:15px; font-weight:600; color:#e5e7eb;">📍 {city}, Pakistan</p>
-            <p>🌡️ {latest_row['temperature'].iloc[0]:.1f}°C &nbsp;·&nbsp; 💧 {latest_row['humidity'].iloc[0]:.0f}% humidity</p>
-            <p>🌬️ {latest_row['wind_speed'].iloc[0]:.1f} km/h wind</p>
+        <div class="readout-side">
+            <p class="city">📍 {city}</p>
+            <p class="cond">TEMP {latest_row['temperature'].iloc[0]:.1f}°C &nbsp;·&nbsp; RH {latest_row['humidity'].iloc[0]:.0f}%</p>
+            <p class="cond">WIND {latest_row['wind_speed'].iloc[0]:.1f} km/h</p>
         </div>
     </div>
+    <div class="grain-strip" style="color:{today_color}; opacity:{g_opacity}; background-size:{g_size}px {g_size}px;"></div>
+    <div style="margin-bottom:28px;"></div>
     """, unsafe_allow_html=True)
 
     # ---------------- 3-DAY FORECAST ----------------
-    st.markdown('<p class="section-header">📅 3-Day Forecast</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sensor-label">3-Day Forecast Channels</p>', unsafe_allow_html=True)
 
     cols = st.columns(3)
     label_dates = {
@@ -239,21 +247,29 @@ try:
             hazard = True
         with cols[i]:
             st.markdown(f"""
-            <div class="metric-card">
-                <p>{labels[h]}</p>
-                <h1 style="color:{color}">{val:.0f}</h1>
-                <p style="color:{color}; font-weight:600">{cat}</p>
+            <div class="channel" style="border-left-color:{color};">
+                <p class="date">{labels[h]}</p>
+                <h1 class="val" style="color:{color}">{val:.0f}</h1>
+                <p class="cat" style="color:{color}">{cat}</p>
             </div>
             """, unsafe_allow_html=True)
 
     st.write("")
     if hazard:
-        st.error(f"⚠️ Hazardous AQI levels predicted for {city}. Sensitive groups should limit outdoor exposure.")
+        st.markdown(f"""
+        <div class="alert-banner" style="border-color:#b8503f; background-color:#b8503f1a; color:#e0a596;">
+            ⚠ HAZARDOUS LEVELS PROJECTED — sensitive groups should limit outdoor exposure in {city}.
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.success(f"✅ No hazardous AQI levels predicted for {city} in the next 3 days.")
+        st.markdown(f"""
+        <div class="alert-banner" style="border-color:#7fb069; background-color:#7fb0691a; color:#a8c99a;">
+            ✓ NO HAZARDOUS LEVELS PROJECTED for {city} over the next 3 days.
+        </div>
+        """, unsafe_allow_html=True)
 
     st.write("")
-    tab1, tab2, tab3 = st.tabs(["📈 Trend History", "🏙️ Compare Cities", "🔍 Why this prediction?"])
+    tab1, tab2, tab3 = st.tabs(["Trend History", "Compare Cities", "Why This Prediction?"])
 
     # ---------------- TAB 1: TREND ----------------
     with tab1:
@@ -263,17 +279,16 @@ try:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=hist["date"], y=hist["pm2_5"], mode="lines+markers",
-            name="Observed PM2.5", line=dict(color="#3498db")
+            name="Observed PM2.5", line=dict(color=ACCENT_HAZE, width=2),
+            marker=dict(size=5)
         ))
         fig.add_trace(go.Scatter(
             x=forecast_dates, y=forecast_vals, mode="lines+markers",
-            name="Forecast", line=dict(color="#e74c3c", dash="dash")
+            name="Forecast", line=dict(color="#b8503f", dash="dash", width=2),
+            marker=dict(size=7, symbol="diamond")
         ))
-        fig.update_layout(
-            template="plotly_dark", height=420,
-            xaxis_title="Date", yaxis_title="PM2.5 / AQI",
-            legend=dict(orientation="h", y=1.1),
-        )
+        fig = themed_chart(fig)
+        fig.update_layout(xaxis_title="Date", yaxis_title="PM2.5 / AQI")
         st.plotly_chart(fig, width='stretch')
 
     # ---------------- TAB 2: COMPARE CITIES ----------------
@@ -285,50 +300,11 @@ try:
             comp_df.melt(id_vars=["City", "Status"], value_vars=["Tomorrow", "In 2 days", "In 3 days"],
                           var_name="Horizon", value_name="AQI"),
             x="City", y="AQI", color="Horizon", barmode="group",
-            template="plotly_dark", height=420,
+            color_discrete_sequence=[ACCENT_HAZE, "#c97a3d", "#b8503f"],
         )
+        fig2 = themed_chart(fig2)
         st.plotly_chart(fig2, width='stretch')
-
-    # ---------------- TAB 3: SHAP ----------------
-    with tab3:
-        horizon_choice = st.radio("Explain which forecast?", ["1d", "2d", "3d"],
-                                   format_func=lambda h: labels[h], horizontal=True)
-        model = models[horizon_choice]
-        feature_cols = list(model.feature_names_in_)
-
-        with st.spinner("Computing SHAP explanation..."):
-            engineered_all = get_engineered_all(all_data)
-            background = engineered_all[feature_cols].sample(
-                min(20, len(engineered_all)), random_state=42
-            )
-            explainer = get_shap_explainer(horizon_choice, model, background)
-            row_for_shap = latest_row[feature_cols]
-            explanation = explainer(row_for_shap)
-
-        values = explanation.values[0]
-        shap_df = pd.DataFrame({
-            "feature": feature_cols, "impact": values
-        }).sort_values("impact", key=abs, ascending=True).tail(10)
-        shap_df["color"] = shap_df["impact"].apply(lambda v: "#e74c3c" if v > 0 else "#2ecc71")
-
-        fig3 = go.Figure(go.Bar(
-            x=shap_df["impact"], y=shap_df["feature"], orientation="h",
-            marker_color=shap_df["color"]
-        ))
-        fig3.update_layout(
-            template="plotly_dark", height=420,
-            xaxis_title="Impact on predicted AQI",
-            title=f"Top feature contributions — {labels[horizon_choice]} forecast for {city}",
-        )
-        st.plotly_chart(fig3, width='stretch')
-        st.caption("🔴 Red bars push the prediction higher (worse air quality). 🟢 Green bars push it lower.")
-
-    st.markdown("""
-    <div class="app-footer">
-        Built with Hopsworks · Open-Meteo · Scikit-learn · SHAP · Streamlit &nbsp;|&nbsp; Pearls AQI Predictor
-    </div>
-    """, unsafe_allow_html=True)
-
+        
 except Exception as e:
-    st.error(f"Something went wrong: {e}")
-    st.info("Check that your .env file has HOPSWORKS_API_KEY set correctly.")
+    st.error("An error occurred while loading the dashboard.")
+    st.exception(e)

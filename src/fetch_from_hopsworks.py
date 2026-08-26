@@ -45,17 +45,11 @@ print(df.head())
 print(df["city"].unique())
 
 # 5. CRITICAL: sort by city first, then by date within each city.
-#    Why? Hopsworks does NOT guarantee row order. If we don't sort,
-#    "yesterday's value" (lag feature) could accidentally come from
-#    a totally different city or a random date. Sorting fixes this.
 df = df.sort_values(by=["city", "date"]).reset_index(drop=True)
 
 print("\nAfter sorting (check Lahore rows are now in date order):")
 print(df[df["city"] == "Lahore"].head(10)[["date", "city", "pm2_5"]])
 
-# Save this cleaned, sorted version locally too, just so we have
-# a checkpoint to look at (not the final storage - Hopsworks stays
-# the source of truth, this is just for our own sanity-checking)
 os.makedirs("data", exist_ok=True)
 df.to_csv("data/raw_from_hopsworks_sorted.csv", index=False)
 print("\nSaved sorted checkpoint to data/raw_from_hopsworks_sorted.csv")
@@ -63,16 +57,13 @@ print("\nSaved sorted checkpoint to data/raw_from_hopsworks_sorted.csv")
 
 # STEP 3: Feature Engineering (per city, to avoid data leakage)
 
-# 6. Calendar features - simple, free signals
 df["day_of_week"] = df["date"].dt.dayofweek.astype("int64")
 df["month"] = df["date"].dt.month.astype("int64")
 
-# 7. Lag features - "what was PM2.5 N days ago, for THIS city"
 df["pm25_lag_1"] = df.groupby("city")["pm2_5"].shift(1)
 df["pm25_lag_3"] = df.groupby("city")["pm2_5"].shift(3)
 df["pm25_lag_7"] = df.groupby("city")["pm2_5"].shift(7)
 
-# 8. Rolling averages - smoothed recent trend, per city
 df["pm25_rolling_3"] = (
     df.groupby("city")["pm2_5"]
     .shift(1)
@@ -97,7 +88,7 @@ print("\nMissing values per column (expected at the START of each city's data):"
 print(df.isna().sum())
 
 
-# STEP 4: Create prediction targets (what the model should predict)
+# STEP 4: Create prediction targets
 
 df["target_1d"] = df.groupby("city")["pm2_5"].shift(-1)
 df["target_2d"] = df.groupby("city")["pm2_5"].shift(-2)
@@ -108,12 +99,6 @@ print(df[df["city"] == "Lahore"][
     ["date", "pm2_5", "target_1d", "target_2d", "target_3d"]
 ].tail(10))
 
-# Only drop rows missing LAG/ROLLING features (needed to make ANY prediction).
-# We deliberately do NOT drop rows just because target_1d/2d/3d are NaN -
-# those are only missing for the last 1-3 days (no "future" data yet),
-# and the dashboard needs exactly those most-recent rows to show today's
-# reading. Training scripts separately exclude NaN-target rows when
-# their date range includes recent days.
 before = len(df)
 df_clean = df.dropna(subset=["pm25_lag_7", "pm25_rolling_7"])
 after = len(df_clean)
@@ -136,16 +121,38 @@ engineered_fg = fs.get_or_create_feature_group(
     event_time="date",
     time_travel_format="HUDI",
     description="Engineered AQI features (lags, rolling averages, targets) for 5 Pakistani cities",
-    statistics_config={"enabled": False},  # avoid Hopsworks stats-compute job flakiness
+    statistics_config={"enabled": False},
 )
 
-# Also disable on existing FG in case it was already created earlier with stats ON
 try:
     engineered_fg.statistics_config = {"enabled": False}
     engineered_fg.update_statistics_config()
 except Exception as e:
     print(f"Could not update statistics config (non-fatal): {e}")
 
-engineered_fg.insert(df_clean, write_options={"wait_for_job": True})
 
-print("Successfully pushed", len(df_clean), "rows to aqi_engineered_features in Hopsworks.")
+# Only push recent window — avoids resending entire history every run.
+# 20 days is a safe buffer for the 7-day rolling/lag windows.
+cutoff_date = df_clean["date"].max() - pd.Timedelta(days=20)
+df_to_push = df_clean[df_clean["date"] >= cutoff_date].copy()
+
+print(f"Pushing recent window only: {len(df_to_push)} rows (was {len(df_clean)})")
+
+# Retry the insert itself — materialization job can fail transiently
+# on the free tier (queueing/resource limits), independent of read flakiness.
+max_retries = 3
+for attempt in range(1, max_retries + 1):
+    try:
+        engineered_fg.insert(df_to_push, write_options={"wait_for_job": True})
+        print(f"Successfully pushed {len(df_to_push)} rows to aqi_engineered_features in Hopsworks.")
+        break
+    except Exception as e:
+        print(f"[Insert attempt {attempt}/{max_retries}] failed: {e}")
+        if attempt < max_retries:
+            wait = 30 * attempt
+            print(f"Waiting {wait}s before retry...")
+            time.sleep(wait)
+        else:
+            print("All insert retries failed. This run's engineered features were NOT pushed. "
+                  "Next scheduled run will try again.")
+            raise

@@ -305,6 +305,79 @@ try:
         fig2 = themed_chart(fig2)
         st.plotly_chart(fig2, width='stretch')
         
+    # ---------------- HELPER: SHAP BACKGROUND DATA ----------------
+    def get_background_data(all_data, feature_cols, n_samples=50):
+        """Sample of recent rows (all cities) to give SHAP a baseline
+        'what's typical' reference to compare each prediction against."""
+        eng = build_engineered_features(all_data)
+        eng = eng.dropna(subset=feature_cols)
+        if len(eng) > n_samples:
+            eng = eng.sample(n_samples, random_state=42)
+        return eng[feature_cols]
+
+    # ---------------- TAB 3: WHY THIS PREDICTION ----------------
+    with tab3:
+        st.markdown('<p class="sensor-label">SHAP Feature Contributions</p>', unsafe_allow_html=True)
+
+        horizon_choice = st.radio(
+            "Forecast horizon", ["1d", "2d", "3d"], horizontal=True,
+            format_func=lambda h: {"1d": "Tomorrow", "2d": "In 2 days", "3d": "In 3 days"}[h]
+        )
+
+        shap_model = models[horizon_choice]
+        feature_cols = list(shap_model.feature_names_in_)
+        row_for_shap = latest_row[feature_cols]
+
+        with st.spinner("Calculating feature contributions..."):
+            background = get_background_data(all_data, feature_cols)
+            explainer = get_shap_explainer(horizon_choice, shap_model, background)
+            shap_values = explainer(row_for_shap)
+
+        contributions = pd.Series(
+            shap_values.values[0], index=feature_cols
+        ).sort_values(key=abs, ascending=False)
+
+        top_increase = contributions[contributions > 0].idxmax() if (contributions > 0).any() else None
+        top_decrease = contributions[contributions < 0].idxmin() if (contributions < 0).any() else None
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Predicted AQI", f"{predictions[horizon_choice]:.1f}")
+        with c2:
+            if top_increase is not None:
+                st.metric("Top increase", top_increase, f"+{contributions[top_increase]:.2f}")
+        with c3:
+            if top_decrease is not None:
+                st.metric("Top decrease", top_decrease, f"{contributions[top_decrease]:.2f}")
+
+        st.write("")
+
+        # Horizontal bar of the top 8 contributing features (waterfall-style)
+        N = 8
+        top_n = contributions.head(N).sort_values()
+        colors = ["#b8503f" if v > 0 else "#7fb069" for v in top_n.values]
+
+        fig3 = go.Figure(go.Bar(
+            x=top_n.values, y=top_n.index, orientation="h",
+            marker_color=colors,
+            text=[f"{v:+.2f}" for v in top_n.values], textposition="outside"
+        ))
+        fig3 = themed_chart(fig3, height=350)
+        fig3.update_layout(xaxis_title="SHAP contribution to AQI prediction", yaxis_title="")
+        st.plotly_chart(fig3, width='stretch')
+
+        with st.expander(f"Show all {len(contributions)} features"):
+            full_sorted = contributions.sort_values()
+            colors_full = ["#b8503f" if v > 0 else "#7fb069" for v in full_sorted.values]
+            fig_full = go.Figure(go.Bar(
+                x=full_sorted.values, y=full_sorted.index, orientation="h",
+                marker_color=colors_full,
+            ))
+            fig_full = themed_chart(fig_full, height=max(400, len(full_sorted) * 22))
+            st.plotly_chart(fig_full, width='stretch')
+
+        st.caption("Red bars push the prediction up · Green bars pull it down")
+        
 except Exception as e:
     st.error("An error occurred while loading the dashboard.")
     st.exception(e)

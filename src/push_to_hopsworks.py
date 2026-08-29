@@ -189,19 +189,16 @@ def get_feature_group(project):
 
 
 def push_to_hopsworks(df, aqi_fg):
-    """Push the batch into the feature group."""
+    """Push the batch into the feature group. Because primary_key=['city','date']
+    is set, Hopsworks/HUDI will UPSERT: matching rows get updated in place,
+    no duplicates get created."""
     df["date"] = pd.to_datetime(df["date"])
-    
-    # Check if a previous materialization job is still running
-    try:
-        job_state = aqi_fg.materialization_job.get_state()
-        if job_state in ("RUNNING", "INITIALIZING"):
-            print(f"Materialization job already running (state={job_state}). "
-                  "Skipping insert this run to avoid overlap — next scheduled run will retry.")
-            return
-    except Exception as e:
-        print(f"Could not check materialization job state (continuing anyway): {e}")
-    
+
+    # Note: Hopsworks' materialization_job.get_state() has proven unreliable
+    # on the free tier — it can report "INITIALIZING" indefinitely even when
+    # no job is actually blocking. We insert directly instead; insert_with_retry
+    # already handles transient failures, and HUDI upsert on primary_key=['city','date']
+    # is safe even if it overlaps with an in-progress job.
     insert_with_retry(aqi_fg, df)
     print("Latest data successfully upserted into Hopsworks!")
 

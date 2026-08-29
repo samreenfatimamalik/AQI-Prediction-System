@@ -28,6 +28,9 @@ jobs:
         run: |
           python src/push_to_hopsworks.py
 
+      - name: Wait for materialization
+        run: sleep 180
+
       - name: Run feature engineering script (engineered features)
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}

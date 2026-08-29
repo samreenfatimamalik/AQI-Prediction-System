@@ -185,6 +185,15 @@ def get_feature_group(project):
         event_time="date",
         time_travel_format="HUDI"
     )
+
+    # Disable statistics computation — this job repeatedly crashes on the
+    # free tier (same issue already fixed for aqi_engineered_features).
+    try:
+        aqi_fg.statistics_config = {"enabled": False}
+        aqi_fg.update_statistics_config()
+    except Exception as e:
+        print(f"Could not update statistics config (non-fatal): {e}")
+
     return aqi_fg
 
 

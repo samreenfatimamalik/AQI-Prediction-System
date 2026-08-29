@@ -27,9 +27,133 @@ TEXT_FAINT = "#5a5d61"
 ACCENT_HAZE = "#c9a15a"   # dusty gold — sun filtered through smog
 
 
-
-
 CITIES = ["Lahore", "Karachi", "Islamabad", "Faisalabad", "Peshawar"]
+
+# ==================== BASE CSS ====================
+st.markdown(f"""
+<style>
+    .readout {{
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        background: {PANEL};
+        border: 1px solid {HAIRLINE};
+        border-radius: 10px;
+        padding: 24px 28px;
+    }}
+    .readout-eyebrow {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: {TEXT_FAINT};
+        margin-bottom: 4px;
+    }}
+    .readout-value {{
+        font-size: 64px;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1;
+        font-family: 'IBM Plex Mono', monospace;
+    }}
+    .readout-status {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+    }}
+    .readout-side {{
+        text-align: right;
+    }}
+    .readout-side .city {{
+        color: {TEXT_PRIMARY};
+        font-size: 14px;
+        margin: 0 0 6px 0;
+    }}
+    .readout-side .cond {{
+        color: {TEXT_MUTED};
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 12px;
+        margin: 2px 0;
+    }}
+    .grain-strip {{
+        height: 6px;
+        border-radius: 3px;
+        background-image: radial-gradient(currentColor 1px, transparent 1px);
+        margin-top: 10px;
+    }}
+    .sensor-label {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: {TEXT_FAINT};
+        margin-bottom: 10px;
+    }}
+    .channel {{
+        background: {PANEL};
+        border: 1px solid {HAIRLINE};
+        border-left: 3px solid;
+        border-radius: 8px;
+        padding: 14px 16px;
+    }}
+    .channel .date {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: {TEXT_FAINT};
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0 0 6px 0;
+    }}
+    .channel .val {{
+        font-size: 34px;
+        font-weight: 700;
+        margin: 0;
+        font-family: 'IBM Plex Mono', monospace;
+    }}
+    .channel .cat {{
+        font-size: 12px;
+        margin: 4px 0 0 0;
+        font-family: 'IBM Plex Mono', monospace;
+    }}
+    .alert-banner {{
+        border: 1px solid;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px;
+        letter-spacing: 0.3px;
+    }}
+    .pollutant-card {{
+        background: {PANEL};
+        border: 1px solid {HAIRLINE};
+        border-radius: 8px;
+        padding: 14px 16px;
+        text-align: left;
+    }}
+    .pollutant-card .label {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 10px;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: {TEXT_FAINT};
+        margin: 0 0 6px 0;
+    }}
+    .pollutant-card .value {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 22px;
+        font-weight: 700;
+        color: {TEXT_PRIMARY};
+        margin: 0;
+    }}
+    .pollutant-card .unit {{
+        font-size: 12px;
+        color: {TEXT_MUTED};
+        font-weight: 400;
+        margin-left: 3px;
+    }}
+</style>
+""", unsafe_allow_html=True)
 
 
 def get_aqi_category(value):
@@ -71,6 +195,53 @@ def themed_chart(fig, height=420):
     return fig
 
 
+def make_aqi_gauge(value, color):
+    """Circular AQI gauge — a dial-style readout in the spirit of the
+    reference design, color-banded to match AQI severity zones."""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        number={
+            "font": {"family": "IBM Plex Mono, monospace", "size": 46, "color": color},
+            "suffix": ""
+        },
+        gauge={
+            "axis": {
+                "range": [0, 300],
+                "tickwidth": 1,
+                "tickcolor": HAIRLINE,
+                "tickfont": {"family": "IBM Plex Mono, monospace", "size": 10, "color": TEXT_FAINT},
+            },
+            "bar": {"color": color, "thickness": 0.28},
+            "bgcolor": PANEL,
+            "borderwidth": 0,
+            "steps": [
+                {"range": [0, 50], "color": "#7fb06933"},
+                {"range": [50, 100], "color": "#d4a54c33"},
+                {"range": [100, 150], "color": "#c97a3d33"},
+                {"range": [150, 200], "color": "#b8503f33"},
+                {"range": [200, 300], "color": "#6b383833"},
+            ],
+        },
+    ))
+    fig.update_layout(
+        height=220,
+        margin=dict(l=20, r=20, t=20, b=10),
+        paper_bgcolor=PANEL,
+        font={"color": TEXT_MUTED, "family": "IBM Plex Mono, monospace"},
+    )
+    return fig
+
+
+def pollutant_card(label, value, unit):
+    st.markdown(f"""
+    <div class="pollutant-card">
+        <p class="label">{label}</p>
+        <p class="value">{value}<span class="unit">{unit}</span></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 @st.cache_resource(show_spinner="Connecting to Hopsworks...")
 def get_project():
     return hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
@@ -89,7 +260,7 @@ def load_models():
     return models
 
 
-@st.cache_data(ttl=3600, show_spinner="Fetching latest data from Hopsworks...")
+@st.cache_data(ttl=1800, show_spinner="Fetching latest data from Hopsworks...")
 def load_all_features():
     project = get_project()
     fs = project.get_feature_store()
@@ -212,22 +383,47 @@ try:
     today_cat, today_color = get_aqi_category(today_val)
     g_opacity, g_size = grain_params(today_val)
 
-    st.markdown(f"""
-    <div class="readout">
-        <div>
-            <p class="readout-eyebrow">Reading · {last_date.strftime('%A, %b %d')}</p>
-            <h1 class="readout-value" style="color:{today_color}">{today_val:.0f}</h1>
-            <p class="readout-status" style="color:{today_color}">{today_cat}</p>
+    readout_col, gauge_col = st.columns([1.3, 1])
+
+    with readout_col:
+        st.markdown(f"""
+        <div class="readout" style="height: 100%;">
+            <div>
+                <p class="readout-eyebrow">Reading · {last_date.strftime('%A, %b %d')}</p>
+                <h1 class="readout-value" style="color:{today_color}">{today_val:.0f}</h1>
+                <p class="readout-status" style="color:{today_color}">{today_cat}</p>
+            </div>
+            <div class="readout-side">
+                <p class="city">📍 {city}</p>
+                <p class="cond">TEMP {latest_row['temperature'].iloc[0]:.1f}°C &nbsp;·&nbsp; RH {latest_row['humidity'].iloc[0]:.0f}%</p>
+                <p class="cond">WIND {latest_row['wind_speed'].iloc[0]:.1f} km/h</p>
+            </div>
         </div>
-        <div class="readout-side">
-            <p class="city">📍 {city}</p>
-            <p class="cond">TEMP {latest_row['temperature'].iloc[0]:.1f}°C &nbsp;·&nbsp; RH {latest_row['humidity'].iloc[0]:.0f}%</p>
-            <p class="cond">WIND {latest_row['wind_speed'].iloc[0]:.1f} km/h</p>
-        </div>
-    </div>
-    <div class="grain-strip" style="color:{today_color}; opacity:{g_opacity}; background-size:{g_size}px {g_size}px;"></div>
-    <div style="margin-bottom:28px;"></div>
-    """, unsafe_allow_html=True)
+        <div class="grain-strip" style="color:{today_color}; opacity:{g_opacity}; background-size:{g_size}px {g_size}px;"></div>
+        """, unsafe_allow_html=True)
+
+    with gauge_col:
+        st.plotly_chart(make_aqi_gauge(today_val, today_color), width='stretch', config={"displayModeBar": False})
+
+    st.write("")
+
+    # ---------------- POLLUTANT GRID ----------------
+    st.markdown('<p class="sensor-label">Sensor Readings</p>', unsafe_allow_html=True)
+    p1, p2, p3, p4, p5, p6 = st.columns(6)
+    with p1:
+        pollutant_card("PM2.5", f"{hist['pm2_5'].iloc[-1]:.0f}", "µg/m³")
+    with p2:
+        pollutant_card("PM10", f"{hist['pm10'].iloc[-1]:.0f}", "µg/m³")
+    with p3:
+        pollutant_card("Temp", f"{latest_row['temperature'].iloc[0]:.1f}", "°C")
+    with p4:
+        pollutant_card("Humidity", f"{latest_row['humidity'].iloc[0]:.0f}", "%")
+    with p5:
+        pollutant_card("Wind", f"{latest_row['wind_speed'].iloc[0]:.1f}", "km/h")
+    with p6:
+        pollutant_card("Pressure", f"{latest_row['pressure'].iloc[0]:.0f}", "hPa")
+
+    st.write("")
 
     # ---------------- 3-DAY FORECAST ----------------
     st.markdown('<p class="sensor-label">3-Day Forecast Channels</p>', unsafe_allow_html=True)
@@ -304,7 +500,7 @@ try:
         )
         fig2 = themed_chart(fig2)
         st.plotly_chart(fig2, width='stretch')
-        
+
     # ---------------- HELPER: SHAP BACKGROUND DATA ----------------
     def get_background_data(all_data, feature_cols, n_samples=50):
         """Sample of recent rows (all cities) to give SHAP a baseline
@@ -377,7 +573,7 @@ try:
             st.plotly_chart(fig_full, width='stretch')
 
         st.caption("Red bars push the prediction up · Green bars pull it down")
-        
+
 except Exception as e:
     st.error("An error occurred while loading the dashboard.")
     st.exception(e)

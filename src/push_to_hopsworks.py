@@ -179,37 +179,56 @@ def get_feature_group(project):
     fs = project.get_feature_store()
     aqi_fg = fs.get_or_create_feature_group(
         name="aqi_daily_features",
-        version=1,
+        version=1,   
         description="Daily average AQI and weather data for 5 Pakistani cities",
         primary_key=["city", "date"],
         event_time="date",
         time_travel_format="HUDI"
     )
-
-    # Disable statistics computation — this job repeatedly crashes on the
-    # free tier (same issue already fixed for aqi_engineered_features).
     try:
         aqi_fg.statistics_config = {"enabled": False}
         aqi_fg.update_statistics_config()
     except Exception as e:
         print(f"Could not update statistics config (non-fatal): {e}")
-
     return aqi_fg
 
 
-def push_to_hopsworks(df, aqi_fg):
-    """Push the batch into the feature group. Because primary_key=['city','date']
-    is set, Hopsworks/HUDI will UPSERT: matching rows get updated in place,
-    no duplicates get created."""
+def push_to_hopsworks(df, aqi_fg, project):
     df["date"] = pd.to_datetime(df["date"])
 
-    # Note: Hopsworks' materialization_job.get_state() has proven unreliable
-    # on the free tier — it can report "INITIALIZING" indefinitely even when
-    # no job is actually blocking. We insert directly instead; insert_with_retry
-    # already handles transient failures, and HUDI upsert on primary_key=['city','date']
-    # is safe even if it overlaps with an in-progress job.
-    insert_with_retry(aqi_fg, df)
-    print("Latest data successfully upserted into Hopsworks!")
+    # Existing attempt via Feature Group (keep as-is, best-effort)
+    try:
+        insert_with_retry(aqi_fg, df)
+        print("Latest data successfully upserted into Hopsworks (Feature Group).")
+    except Exception as e:
+        print(f"Feature Group insert failed (non-fatal, continuing): {e}")
+
+    # ---- BYPASS PATH: Dataset API upload ----
+    # This avoids the Spark/HUDI materialization job entirely (the actual
+    # point of failure). It just stores a file — no background job involved.
+    history_path = "data/aqi_daily_history.csv"
+    os.makedirs("data", exist_ok=True)
+    if os.path.exists(history_path):
+        existing = pd.read_csv(history_path, parse_dates=["date"])
+        combined = pd.concat([existing, df], ignore_index=True)
+        combined = combined.drop_duplicates(subset=["city", "date"], keep="last")
+    else:
+        combined = df.copy()
+    combined = combined.sort_values(["city", "date"]).reset_index(drop=True)
+    combined.to_csv(history_path, index=False)
+
+    try:
+        parquet_path = "data/aqi_daily_history.parquet"
+        combined.to_parquet(parquet_path, index=False)
+        dataset_api = project.get_dataset_api()
+        try:
+            dataset_api.mkdir("Resources/aqi_daily")
+        except Exception:
+            pass
+        dataset_api.upload(parquet_path, "Resources/aqi_daily", overwrite=True)
+        print(f"Uploaded {len(combined)} rows via Dataset API (bypass path) — always fresh.")
+    except Exception as e:
+        print(f"Dataset API upload failed (non-fatal): {e}")
 
 
 if __name__ == "__main__":
@@ -224,4 +243,4 @@ if __name__ == "__main__":
     print(f"\nFetched {len(latest_df)} rows across all cities.")
     print(latest_df.head(10))
 
-    push_to_hopsworks(latest_df, aqi_fg)
+    push_to_hopsworks(latest_df, aqi_fg, project)

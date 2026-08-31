@@ -112,6 +112,8 @@ print("\nSaved final engineered dataset to data/engineered_features.csv")
 
 # STEP 5: Push engineered features to Hopsworks Feature Store
 
+# STEP 5: Push engineered features to Hopsworks Feature Store
+
 print("\nPushing engineered features to Hopsworks...")
 
 engineered_fg = fs.get_or_create_feature_group(
@@ -131,26 +133,21 @@ except Exception as e:
     print(f"Could not update statistics config (non-fatal): {e}")
 
 
-# Only push recent window — avoids resending entire history every run.
-# 20 days is a safe buffer for the 7-day rolling/lag windows.
 cutoff_date = df_clean["date"].max() - pd.Timedelta(days=20)
 df_to_push = df_clean[df_clean["date"] >= cutoff_date].copy()
 
 print(f"Pushing recent window only: {len(df_to_push)} rows (was {len(df_clean)})")
 
-# Retry the insert itself — materialization job can fail transiently
-# on the free tier (queueing/resource limits), independent of read flakiness.
+expected_latest_date = df_clean["date"].max()
+insert_succeeded = False
+
 max_retries = 2
 for attempt in range(1, max_retries + 1):
     try:
-        # wait_for_job=False: submit the insert and move on immediately.
-        # We don't block on Hopsworks' free-tier Spark materialization job,
-        # which is frequently slow/unstable server-side. If it silently
-        # fails, the next scheduled run's insert (with fresh recent data)
-        # will effectively retry/backfill it anyway.
         engineered_fg.insert(df_to_push, write_options={"wait_for_job": False})
         print(f"Submitted {len(df_to_push)} rows to aqi_engineered_features "
               f"(not waiting for materialization job to finish).")
+        insert_succeeded = True
         break
     except Exception as e:
         print(f"[Insert attempt {attempt}/{max_retries}] failed: {e}")
@@ -158,9 +155,30 @@ for attempt in range(1, max_retries + 1):
             wait = 15
             print(f"Waiting {wait}s before retry...")
             time.sleep(wait)
-        else:
-            print("Insert retries failed. This run's engineered features were NOT pushed. "
-                  "Next scheduled run will try again.")
-            # Don't crash the whole workflow — just exit cleanly so the
-            # rest of CI/CD doesn't get blocked over a transient issue.
-            sys.exit(0)
+
+if not insert_succeeded:
+    print("Insert retries failed. This run's engineered features were NOT pushed.")
+    sys.exit(1)  # FAIL LOUDLY — don't hide this as success anymore
+
+# ---- FRESHNESS CHECK ----
+# The insert call succeeding doesn't guarantee Hopsworks' materialization
+# job actually finished. Wait briefly, then re-read and confirm the FG
+# actually reflects the new data before calling this run a success.
+print("\nVerifying materialization actually landed...")
+time.sleep(60)
+
+try:
+    check_df = engineered_fg.select_all().read(read_options={"use_hive": True})
+    check_df["date"] = pd.to_datetime(check_df["date"])
+    actual_latest = check_df["date"].max()
+    print(f"Expected latest date: {expected_latest_date.date()}")
+    print(f"Actual latest date in FG after materialization: {actual_latest.date()}")
+
+    if actual_latest < expected_latest_date - pd.Timedelta(days=1):
+        print("WARNING: Materialization appears stale/incomplete. "
+              "Data was submitted but FG doesn't reflect it yet.")
+        sys.exit(1)
+    else:
+        print("Materialization confirmed fresh.")
+except Exception as e:
+    print(f"Could not verify materialization (non-fatal, but suspicious): {e}")

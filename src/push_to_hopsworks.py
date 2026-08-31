@@ -4,6 +4,7 @@ import time
 import os
 import hopsworks
 from dotenv import load_dotenv
+import sys
 
 def insert_with_retry(fg, df, max_retries=3, wait_seconds=20, **kwargs):
     for attempt in range(1, max_retries + 1):
@@ -196,16 +197,15 @@ def get_feature_group(project):
 def push_to_hopsworks(df, aqi_fg, project):
     df["date"] = pd.to_datetime(df["date"])
 
-    # Existing attempt via Feature Group (keep as-is, best-effort)
+    fg_insert_succeeded = False
     try:
         insert_with_retry(aqi_fg, df)
         print("Latest data successfully upserted into Hopsworks (Feature Group).")
+        fg_insert_succeeded = True
     except Exception as e:
-        print(f"Feature Group insert failed (non-fatal, continuing): {e}")
+        print(f"Feature Group insert failed after retries: {e}")
 
-    # ---- BYPASS PATH: Dataset API upload ----
-    # This avoids the Spark/HUDI materialization job entirely (the actual
-    # point of failure). It just stores a file — no background job involved.
+    # ---- BYPASS PATH: Dataset API upload (backup only, NOT read by dashboard) ----
     history_path = "data/aqi_daily_history.csv"
     os.makedirs("data", exist_ok=True)
     if os.path.exists(history_path):
@@ -230,6 +230,13 @@ def push_to_hopsworks(df, aqi_fg, project):
     except Exception as e:
         print(f"Dataset API upload failed (non-fatal): {e}")
 
+    # CRITICAL: the Feature Group is what dashboard.py and fetch_from_hopsworks.py
+    # actually read. If that insert failed, this run did NOT move the pipeline
+    # forward — fail loudly so it's not silently masked as green in GitHub Actions.
+    if not fg_insert_succeeded:
+        print("ABORTING: raw Feature Group insert failed. Downstream engineered "
+              "features will be stale until this succeeds.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     print("Connecting to Hopsworks...")

@@ -195,6 +195,16 @@ def themed_chart(fig, height=420):
     return fig
 
 
+def hex_to_rgba(hex_color, alpha=0.2):
+    """Converts a 6-digit hex color to an rgba() string Plotly's
+    gauge.step property will actually accept (it rejects 8-digit hex)."""
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def make_aqi_gauge(value, color):
     """Circular AQI gauge — a dial-style readout in the spirit of the
     reference design, color-banded to match AQI severity zones."""
@@ -216,11 +226,11 @@ def make_aqi_gauge(value, color):
             "bgcolor": PANEL,
             "borderwidth": 0,
             "steps": [
-                {"range": [0, 50], "color": "#7fb06933"},
-                {"range": [50, 100], "color": "#d4a54c33"},
-                {"range": [100, 150], "color": "#c97a3d33"},
-                {"range": [150, 200], "color": "#b8503f33"},
-                {"range": [200, 300], "color": "#6b383833"},
+                {"range": [0, 50], "color": hex_to_rgba("#7fb069")},
+                {"range": [50, 100], "color": hex_to_rgba("#d4a54c")},
+                {"range": [100, 150], "color": hex_to_rgba("#c97a3d")},
+                {"range": [150, 200], "color": hex_to_rgba("#b8503f")},
+                {"range": [200, 300], "color": hex_to_rgba("#6b3838")},
             ],
         },
     ))
@@ -259,6 +269,19 @@ def load_models():
         models[horizon] = joblib.load(pkl_files[0])
     return models
 
+def compute_lag_features(df):
+    """Computes pm25 lag/rolling features needed by build_engineered_features(),
+    grouped by city to avoid cross-city leakage. Used only in the raw-fallback
+    path, since the engineered Hopsworks FG already has these precomputed."""
+    df = df.sort_values(["city", "date"]).copy()
+    grouped = df.groupby("city")["pm2_5"]
+    df["pm25_lag_1"] = grouped.shift(1)
+    df["pm25_lag_3"] = grouped.shift(3)
+    df["pm25_lag_7"] = grouped.shift(7)
+    df["pm25_rolling_3"] = grouped.transform(lambda s: s.shift(1).rolling(3).mean())
+    df["pm25_rolling_7"] = grouped.transform(lambda s: s.shift(1).rolling(7).mean())
+    return df
+
 
 @st.cache_data(ttl=1800, show_spinner="Fetching latest data from Hopsworks...")
 def load_all_features():
@@ -269,16 +292,36 @@ def load_all_features():
     try:
         df = fg.read()
     except Exception:
-        df = fg.select_all().read(read_options={"use_hive": True})
+        try:
+            df = fg.select_all().read(read_options={"use_hive": True})
+        except Exception:
+            df = None
 
-    df["date"] = pd.to_datetime(df["date"])
+    if df is not None:
+        df["date"] = pd.to_datetime(df["date"])
+        today = pd.Timestamp.now(tz="UTC").normalize()
+        df_recent = df[df["date"] <= today]
+        cutoff = df_recent["date"].max() - pd.Timedelta(days=15)
+        df_recent = df_recent[df_recent["date"] >= cutoff].reset_index(drop=True)
 
-    today = pd.Timestamp.now(tz="UTC").normalize()
-    df = df[df["date"] <= today]
+        # If Hopsworks materialization is stuck, this data will be stale.
+        # Fall through to the raw bypass file if it's more recent.
+        staleness = (today - df_recent["date"].max()).days
+        if staleness <= 2:
+            return df_recent
 
-    cutoff = df["date"].max() - pd.Timedelta(days=15)
-    return df[df["date"] >= cutoff].reset_index(drop=True)
-
+    # ---- FALLBACK: read from the raw bypass CSV (always fresh) ----
+    # Note: this is raw daily data, not the fully engineered feature set,
+    # so we compute the lag/rolling features ourselves before engineering.
+    project = get_project()
+    dataset_api = project.get_dataset_api()
+    local_path = "data/aqi_daily_history_fallback.csv"
+    os.makedirs("data", exist_ok=True)
+    dataset_api.download("Resources/aqi_daily/aqi_daily_history.parquet", local_path=local_path, overwrite=True)
+    raw_df = pd.read_parquet(local_path)
+    raw_df["date"] = pd.to_datetime(raw_df["date"])
+    raw_df = compute_lag_features(raw_df)
+    return build_engineered_features(raw_df).sort_values("date").reset_index(drop=True)
 
 def build_engineered_features(df):
     df = df.copy()

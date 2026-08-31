@@ -325,6 +325,8 @@ def load_all_features():
 
 def build_engineered_features(df):
     df = df.copy()
+    df["day_of_week"] = df["date"].dt.dayofweek
+    df["month"] = df["date"].dt.month
     df["aqi_change_rate"] = (df["pm25_lag_1"] - df["pm25_lag_3"]) / 3
     df["volatility_7"] = (df["pm25_lag_1"] - df["pm25_rolling_7"]).abs()
     df["wind_stagnation"] = df["humidity"] / (df["wind_speed"] + 1)
@@ -333,6 +335,12 @@ def build_engineered_features(df):
     df["pm25_rolling_max_7"] = df[
         ["pm25_lag_1", "pm25_lag_3", "pm25_lag_7", "pm25_rolling_7"]
     ].max(axis=1)
+
+    # Drop any pre-existing city_* dummy columns (e.g. data already came
+    # engineered from the FG) so we don't create duplicates below.
+    existing_dummy_cols = [f"city_{c}" for c in CITIES if f"city_{c}" in df.columns]
+    if existing_dummy_cols:
+        df = df.drop(columns=existing_dummy_cols)
 
     dummies = pd.get_dummies(df["city"], prefix="city")
     for c in CITIES:

@@ -144,9 +144,9 @@ insert_succeeded = False
 max_retries = 2
 for attempt in range(1, max_retries + 1):
     try:
-        engineered_fg.insert(df_to_push, write_options={"wait_for_job": False})
+        engineered_fg.insert(df_to_push, write_options={"wait_for_job": True})  # CHANGED: False -> True
         print(f"Submitted {len(df_to_push)} rows to aqi_engineered_features "
-              f"(not waiting for materialization job to finish).")
+              f"(waited for materialization job to finish).")
         insert_succeeded = True
         break
     except Exception as e:
@@ -158,7 +158,41 @@ for attempt in range(1, max_retries + 1):
 
 if not insert_succeeded:
     print("Insert retries failed. This run's engineered features were NOT pushed.")
-    sys.exit(1)  # FAIL LOUDLY — don't hide this as success anymore
+    sys.exit(1)
+
+# ---- FRESHNESS CHECK (now just a confirmation, not a race) ----
+print("\nVerifying materialization actually landed...")
+
+max_verify_retries = 3
+verify_wait = 30
+actual_latest = None
+
+for v_attempt in range(1, max_verify_retries + 1):
+    try:
+        check_df = engineered_fg.select_all().read(read_options={"use_hive": True})
+        check_df["date"] = pd.to_datetime(check_df["date"])
+        actual_latest = check_df["date"].max()
+        print(f"[Verify attempt {v_attempt}/{max_verify_retries}] "
+              f"Expected latest date: {expected_latest_date.date()}, "
+              f"Actual: {actual_latest.date()}")
+
+        if actual_latest >= expected_latest_date - pd.Timedelta(days=1):
+            print("Materialization confirmed fresh.")
+            break
+        else:
+            print("Not fresh yet.")
+            if v_attempt < max_verify_retries:
+                print(f"Waiting {verify_wait}s before re-checking...")
+                time.sleep(verify_wait)
+    except Exception as e:
+        print(f"Could not verify materialization on attempt {v_attempt}: {e}")
+        if v_attempt < max_verify_retries:
+            time.sleep(verify_wait)
+
+if actual_latest is None or actual_latest < expected_latest_date - pd.Timedelta(days=1):
+    print("WARNING: Materialization still appears stale/incomplete after retries. "
+          "Data was submitted but FG doesn't reflect it yet.")
+    sys.exit(1)
 
 # ---- FRESHNESS CHECK ----
 # The insert call succeeding doesn't guarantee Hopsworks' materialization

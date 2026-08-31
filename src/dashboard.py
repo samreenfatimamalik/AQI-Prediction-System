@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-st.set_page_config(page_title="Pearls AQI Predictor", page_icon="🌫️", layout="wide")
+st.set_page_config(page_title="Sam's AQI Predictor", page_icon="🌿", layout="wide")
 
 # ==================== DESIGN TOKENS ====================
 # "Instrument panel" aesthetic — the dashboard reads like a sensor
@@ -390,9 +390,9 @@ def get_shap_explainer(horizon_key, _model, _background_df):
 with st.sidebar:
     st.markdown(f"""
     <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600;
-    color:{TEXT_PRIMARY}; margin-bottom:0;">🌫️ PEARLS AQI</p>
+    color:{TEXT_PRIMARY}; margin-bottom:0;">🌿 Sam's AQI Predictor</p>
     <p style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:1px;
-    color:{TEXT_FAINT}; text-transform:uppercase; margin-top:2px;">Station Console</p>
+    color:{TEXT_FAINT}; text-transform:uppercase; margin-top:2px;">Let's Predict AQI of your City</p>
     """, unsafe_allow_html=True)
     city = st.selectbox("Select a city", CITIES)
     if st.button("↻ Refresh feed", width='stretch'):
@@ -423,7 +423,7 @@ try:
     # ---------------- HEADER ----------------
     st.markdown(f"""
     <p style="font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:2px;
-    text-transform:uppercase; color:{TEXT_FAINT}; margin-bottom:2px;">Pearls AQI Predictor</p>
+    text-transform:uppercase; color:{TEXT_FAINT}; margin-bottom:2px;">Sam's AQI Predictor</p>
     """, unsafe_allow_html=True)
     st.title(f"{city}, Pakistan")
     st.caption("3-day particulate forecast · serverless ML pipeline")
@@ -505,13 +505,13 @@ try:
     if hazard:
         st.markdown(f"""
         <div class="alert-banner" style="border-color:#b8503f; background-color:#b8503f1a; color:#e0a596;">
-            ⚠ HAZARDOUS LEVELS PROJECTED — sensitive groups should limit outdoor exposure in {city}.
+            ⚠️ HAZARDOUS LEVELS PROJECTED — sensitive groups should limit outdoor exposure in {city}.
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown(f"""
         <div class="alert-banner" style="border-color:#7fb069; background-color:#7fb0691a; color:#a8c99a;">
-            ✓ NO HAZARDOUS LEVELS PROJECTED for {city} over the next 3 days.
+            🟢 NO HAZARDOUS LEVELS PROJECTED for {city} over the next 3 days.
         </div>
         """, unsafe_allow_html=True)
 

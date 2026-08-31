@@ -217,7 +217,6 @@ Hopsworks' free tier introduces server-side instability that is not related to a
 - **Non-blocking writes**: Feature inserts do not block the pipeline while waiting for background storage jobs to finish, since those jobs can be slow on shared free-tier infrastructure. The pipeline moves on, and the next scheduled run naturally reconciles any pending data.
 - **Conflict avoidance**: Before writing new data, the pipeline checks whether a previous background job is still in progress and skips the write if so, rather than triggering a conflicting job.
 - **Graceful degradation**: If Hopsworks is completely unreachable during a run, the pipeline exits cleanly and logs the reason instead of crashing, and the next scheduled run retries automatically.
-Still working on this...
 This design means the system keeps itself consistent over time even when individual runs occasionally fail, which is expected behavior on free-tier infrastructure.
 
 ---
@@ -293,3 +292,5 @@ streamlit run src/dashboard.py
 - Experiment with deep learning models (LSTM or similar sequence models) for longer horizons
 - Add automated model comparison and rollback if a newly trained model performs worse than the currently deployed one
 - Extend coverage to additional cities
+
+## BTW I am still working on this, Stay updated for more ℹ️

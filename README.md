@@ -1,4 +1,4 @@
-# AQI Predictor
+# Sam's AQI Predictor
 
 A serverless, end-to-end machine learning system that forecasts the Air Quality Index (AQI) for the next three days across five major Pakistani cities: Lahore, Karachi, Islamabad, Faisalabad, and Peshawar.
 
@@ -290,4 +290,3 @@ streamlit run src/dashboard.py
 - Add automated model comparison and rollback if a newly trained model performs worse than the currently deployed one
 - Extend coverage to additional cities
 
-## BTW I am still working on this, Stay updated for more ℹ️

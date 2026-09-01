@@ -238,18 +238,15 @@ cd AQI-Prediction-System
 
 # Create and activate a virtual environment
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+.\.venv\Scripts\Activate.ps1          # Windows
 source .venv/bin/activate     # macOS/Linux
 
 # Install dependencies
-pip install requests pandas hopsworks python-dotenv pyarrow confluent-kafka scikit-learn streamlit plotly shap joblib
+pip install requests pandas hopsworks python-dotenv pyarrow scikit-learn streamlit plotly shap joblib
 ```
 
 Create a `.env` file in the project root:
 
-```
-HOPSWORKS_API_KEY=your_api_key_here
-```
 
 Run the pipeline manually:
 

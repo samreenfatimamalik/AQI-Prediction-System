@@ -43,7 +43,7 @@ The entire system runs without a traditional backend server. Data collection and
 
 ## Live Demo
 
-- Dashboard: Streamlit Cloud (see deployment section)
+- Dashboard: https://sam-aqi-predictor.streamlit.app/
 - Repository: https://github.com/samreenfatimamalik/AQI-Prediction-System
 
 ---

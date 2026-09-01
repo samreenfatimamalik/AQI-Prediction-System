@@ -121,6 +121,7 @@ AQI-Prediction-System/
 │   ├── fetch_multicity_daily.py   # Historical backfill script (one-time use)
 │   └── dashboard.py               # Streamlit application
 │
+├──requirements.txt
 └── README.md
 ```
 

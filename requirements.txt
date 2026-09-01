@@ -9,5 +9,4 @@ plotly
 python-dotenv
 requests
 joblib
-confluent-kafka
 pyarrow

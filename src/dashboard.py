@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Bridge Streamlit Cloud secrets -> env var, so os.getenv() keeps working
+# the same way locally (.env) and on Streamlit Cloud (st.secrets).
+if "HOPSWORKS_API_KEY" in st.secrets:
+    os.environ["HOPSWORKS_API_KEY"] = st.secrets["HOPSWORKS_API_KEY"]
+
 st.set_page_config(page_title="Sam's AQI Predictor", page_icon="🌿", layout="wide")
 
 # ==================== DESIGN TOKENS ====================

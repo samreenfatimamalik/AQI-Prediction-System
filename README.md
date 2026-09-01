@@ -1,4 +1,4 @@
-# AQI Predictor
+# Sam's AQI Predictor
 
 A serverless, end-to-end machine learning system that forecasts the Air Quality Index (AQI) for the next three days across five major Pakistani cities: Lahore, Karachi, Islamabad, Faisalabad, and Peshawar.
 
@@ -43,7 +43,7 @@ The entire system runs without a traditional backend server. Data collection and
 
 ## Live Demo
 
-- Dashboard: Streamlit Cloud (see deployment section)
+- Dashboard: https://sam-aqi-predictor.streamlit.app/
 - Repository: https://github.com/samreenfatimamalik/AQI-Prediction-System
 
 ---
@@ -121,6 +121,7 @@ AQI-Prediction-System/
 │   ├── fetch_multicity_daily.py   # Historical backfill script (one-time use)
 │   └── dashboard.py               # Streamlit application
 │
+├──requirements.txt
 └── README.md
 ```
 
@@ -238,18 +239,15 @@ cd AQI-Prediction-System
 
 # Create and activate a virtual environment
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+.\.venv\Scripts\Activate.ps1          # Windows
 source .venv/bin/activate     # macOS/Linux
 
 # Install dependencies
-pip install requests pandas hopsworks python-dotenv pyarrow confluent-kafka scikit-learn streamlit plotly shap joblib
+pip install requests pandas hopsworks python-dotenv pyarrow scikit-learn streamlit plotly shap joblib
 ```
 
 Create a `.env` file in the project root:
 
-```
-HOPSWORKS_API_KEY=your_api_key_here
-```
 
 Run the pipeline manually:
 
@@ -293,4 +291,3 @@ streamlit run src/dashboard.py
 - Add automated model comparison and rollback if a newly trained model performs worse than the currently deployed one
 - Extend coverage to additional cities
 
-## BTW I am still working on this, Stay updated for more ℹ️

@@ -287,7 +287,7 @@ streamlit run src/dashboard.py
 
 - Incorporate actual weather forecast data (rather than only historical weather) to improve 2-day and 3-day accuracy
 - Add satellite-based fire and dust detection as an additional feature source
-- Experiment with deep learning models (LSTM or similar sequence models) for longer horizons
+- Experiment with deep learning models for longer horizons
 - Add automated model comparison and rollback if a newly trained model performs worse than the currently deployed one
 - Extend coverage to additional cities
 
